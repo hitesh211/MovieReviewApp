@@ -1,0 +1,132 @@
+<html>
+<head>
+
+    <style>
+    body{
+        background: #111;
+    }
+
+    .main-div{
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+	.navbar ul {
+	  list-style-type: none;
+	  margin: 0;
+	  padding: 0;
+	  overflow: hidden;
+	  border: 1px solid #e7e7e7;
+	  background-color: #f3f3f3;
+	}
+
+	.navbar li {
+	  float: left;
+	}
+
+	.navbar li a {
+	  display: block;
+	  color: #666;
+	  text-align: center;
+	  padding: 14px 16px;
+	  text-decoration: none;
+	}
+
+	.navbar li a:hover:not(.active) {
+	  background-color: #ddd;
+	}
+
+	.navbar li a.active {
+	  color: white;
+	  background-color: #04AA6D;
+	}
+
+    .main-container{
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        padding: 30px;
+       
+    }
+
+    .reviews-container{
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 30px;
+       
+    }
+
+    form{
+        background: white;
+        padding: 30px;
+    }
+    
+    .nav-item {
+        font: 30px;
+        color: white;
+        margin-left: 40px;
+        margin-right: 40px;
+    }
+
+    .nav-item:hover {
+        color: navy;
+        margin-left: 40px;
+        margin-right: 40px;
+        background: white;
+    }
+
+    textarea{
+        width: 100%;
+        height: 100px;
+    }
+
+    h1{
+        font-size: 60px;
+        color: white;
+    }
+
+    .review{
+
+        background: white;
+        padding: 30px;
+    }
+
+    .review-header{
+        font-size: 20px;
+        color: black;
+    }
+    .review-text{
+        font-size: 18px;
+        font-style: italic;
+        color: black;
+    }
+
+    </style>
+
+</head>
+<body>
+    <div class="main-div">
+		<div class="navbar">
+		  <ul>
+			  <li><a href="/">Submit Review</a></li>
+			  <li><a class="active" href="/reviews">Read Reviews</a></li>
+		  </ul>
+		</div>
+		<div class="main-container">
+			<div class="reviews-container">
+			   
+				{% for user_review in reviews %}
+					<div class="review">
+					<h2 class="review-header"> {{ user_review.name }} </h2>
+					<p class="review-text">Movie Name : {{ user_review.movname}} </br> Movie Rating : {{ user_review.rating}} </br> Movie Review : {{ user_review.review}}</p>
+
+				</div>
+				<br><br>
+				{% endfor %}
+			</div>
+		</div>
+	</div>
+</body>
+</html>
