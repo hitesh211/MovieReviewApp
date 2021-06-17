@@ -1,0 +1,57 @@
+def remote = [:]
+remote.name = "docker"
+remote.host = "54.210.219.251"
+remote.allowAnyHosts = true
+node{
+    stage('Scm Checkout'){
+        git 'https://github.com/hiteshgrw/MovieReviewApp.git'
+    }
+    stage('Build Docker Image'){
+		stage('Build FrontEnd Docker Image'){
+			dir('mreviewfrontend') {
+				sh 'docker build -t hiteshgrw/mreviewfrontend:latest .'
+			}
+		}
+		stage('Build BackEnd Docker Image'){
+			dir('mreviewbackend') {
+				sh 'docker build -t hiteshgrw/mreviewbackend:latest .'
+			}
+		}
+	}
+	stage('Push Docker Image'){
+		withCredentials([usernamePassword(credentialsId: 'docker_hub_cred', passwordVariable: 'passwd', usernameVariable: 'usrname')]) {
+            sh "docker login -u ${usrname} -p ${passwd}"
+        }
+		stage('Push FrontEnd Docker Image'){
+			sh 'docker push hiteshgrw/mreviewfrontend:latest'
+		}
+		stage('Push BackEnd Docker Image'){
+			sh 'docker push hiteshgrw/mreviewbackend:latest'
+		}
+	}
+    stage('ssh on to remote host'){
+        withCredentials([sshUserPrivateKey(credentialsId: 'ssh_cred', keyFileVariable: 'pemkey', passphraseVariable: 'pvar', usernameVariable: 'usrvar')]) {
+            remote.user = usrvar
+            remote.identityFile = pemkey
+            stage('Delete the running containers'){
+                sshCommand remote: remote, command: "sudo docker kill frontend || true"
+                sshCommand remote: remote, command: "sudo docker rm frontend || true"
+				sshCommand remote: remote, command: "sudo docker kill backend || true"
+                sshCommand remote: remote, command: "sudo docker rm backend || true"
+				sshCommand remote: remote, command: "sudo docker kill db || true"
+                sshCommand remote: remote, command: "sudo docker rm db || true"
+				sshCommand remote: remote, command: "sudo docker kill adminer || true"
+                sshCommand remote: remote, command: "sudo docker rm adminer || true"
+            }
+            stage('Create a network'){
+                sshCommand remote: remote, command: "sudo docker network create mynet || true"
+            }
+            stage('Deploy Docker Container'){
+				sshCommand remote: remote, command: "sudo docker run --net mynet --name db --env POSTGRES_USER=hitesh --env POSTGRES_PASSWORD=hitesh --env POSTGRES_DB=movies -d -v dbvolume:/var/lib/postgresql/data --restart=always postgres"
+                sshCommand remote: remote, command: "sudo docker run --net mynet --name adminer --restart=always -p 9090:8080 -d adminer"
+				sshCommand remote: remote, command: "sudo docker run --net mynet --name backend --env DB_USER=hitesh --env DB_PASS=hitesh --env DB=movies --env DB_HOST=db -d hiteshgrw/mreviewbackend:latest"
+				sshCommand remote: remote, command: "sudo docker run --net mynet --name frontend -d -p 80:5000 hiteshgrw/mreviewfrontend:latest"
+            }
+        }
+    }
+}
