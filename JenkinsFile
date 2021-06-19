@@ -1,7 +1,4 @@
 def remote = [:]
-remote.name = "docker"
-remote.host = "54.210.219.251"
-remote.allowAnyHosts = true
 node{
     stage('Scm Checkout'){
         git 'https://github.com/hiteshgrw/MovieReviewApp.git'
@@ -19,8 +16,8 @@ node{
 		}
 	}
 	stage('Push Docker Image'){
-		withCredentials([usernamePassword(credentialsId: 'docker_hub_cred', passwordVariable: 'passwd', usernameVariable: 'usrname')]) {
-            sh "docker login -u ${usrname} -p ${passwd}"
+		withCredentials([usernamePassword(credentialsId: 'docker_hub_cred', passwordVariable: 'dhub_passwd', usernameVariable: 'dhub_usrname')]) {
+            sh "docker login -u ${dhub_usrname} -p ${dhub_passwd}"
         }
 		stage('Push FrontEnd Docker Image'){
 			sh 'docker push hiteshgrw/mreviewfrontend:latest'
@@ -29,29 +26,111 @@ node{
 			sh 'docker push hiteshgrw/mreviewbackend:latest'
 		}
 	}
-    stage('ssh on to remote host'){
-        withCredentials([sshUserPrivateKey(credentialsId: 'ssh_cred', keyFileVariable: 'pemkey', passphraseVariable: 'pvar', usernameVariable: 'usrvar')]) {
-            remote.user = usrvar
-            remote.identityFile = pemkey
-            stage('Delete the running containers'){
-                sshCommand remote: remote, command: "sudo docker kill frontend || true"
-                sshCommand remote: remote, command: "sudo docker rm frontend || true"
-				sshCommand remote: remote, command: "sudo docker kill backend || true"
-                sshCommand remote: remote, command: "sudo docker rm backend || true"
-				sshCommand remote: remote, command: "sudo docker kill db || true"
-                sshCommand remote: remote, command: "sudo docker rm db || true"
-				sshCommand remote: remote, command: "sudo docker kill adminer || true"
-                sshCommand remote: remote, command: "sudo docker rm adminer || true"
-            }
-            stage('Create a network'){
-                sshCommand remote: remote, command: "sudo docker network create mynet || true"
-            }
-            stage('Deploy Docker Container'){
-				sshCommand remote: remote, command: "sudo docker run --net mynet --name db --env POSTGRES_USER=hitesh --env POSTGRES_PASSWORD=hitesh --env POSTGRES_DB=movies -d -v dbvolume:/var/lib/postgresql/data --restart=always postgres"
-                sshCommand remote: remote, command: "sudo docker run --net mynet --name adminer --restart=always -p 9090:8080 -d adminer"
-				sshCommand remote: remote, command: "sudo docker run --net mynet --name backend --env DB_USER=hitesh --env DB_PASS=hitesh --env DB=movies --env DB_HOST=db -d hiteshgrw/mreviewbackend:latest"
-				sshCommand remote: remote, command: "sudo docker run --net mynet --name frontend -d -p 80:5000 hiteshgrw/mreviewfrontend:latest"
-            }
-        }
-    }
+	stage('Test the Docker Image'){
+		def usrInput_test_choice = input id: 'Test_choice', message: 'User Prompt!', parameters: [choice(choices: ['Yes', 'No'], description: 'Do you want to run the code on a Test Container ?', name: 'test_choice_proceed')], submitterParameter: 'test_choice_provider'
+		def result_usrInput_test_choice = usrInput_test_choice['test_choice_proceed']
+		def provider_usrInput_test_choice = usrInput_test_choice['test_choice_provider']
+		echo "Testing Choice is approved by ${provider_usrInput_test_choice}"
+		script {
+			if (result_usrInput_test_choice == 'Yes') {
+				def usrInput_test_input = input id: 'Test_input', message: 'User Prompt!', parameters: [string(description: 'What is IP of the Testing Machine on which you want to deploy ?', name: 'test_machine_ip', trim: true)], submitterParameter: 'test_input_provider'
+				def result_usrInput_test_input = usrInput_test_input['test_machine_ip']
+				def provider_usrInput_test_input = usrInput_test_input['test_input_provider']
+				echo "Testing Machine IP is provided by ${provider_usrInput_test_input}"
+				withCredentials([sshUserPrivateKey(credentialsId: 'ssh_key', keyFileVariable: 'ssh_key', passphraseVariable: '', usernameVariable: 'ssh_usrname')]) {
+					remote.name = "docker"
+					remote.host = result_usrInput_test_input
+					remote.allowAnyHosts = true
+					remote.user = ssh_usrname
+					remote.identityFile = ssh_key
+					stage('Testing Machine - Delete the running containers'){
+						sshCommand remote: remote, command: "sudo docker kill frontend || true"
+						sshCommand remote: remote, command: "sudo docker rm frontend || true"
+						sshCommand remote: remote, command: "sudo docker kill backend || true"
+						sshCommand remote: remote, command: "sudo docker rm backend || true"
+						sshCommand remote: remote, command: "sudo docker kill db || true"
+						sshCommand remote: remote, command: "sudo docker rm db || true"
+						sshCommand remote: remote, command: "sudo docker kill adminer || true"
+						sshCommand remote: remote, command: "sudo docker rm adminer || true"
+						sshCommand remote: remote, command: "sudo docker rmi hiteshgrw/mreviewfrontend:latest || true"
+						sshCommand remote: remote, command: "sudo docker rmi hiteshgrw/mreviewbackend:latest || true"
+					}
+					stage('Testing Machine - Create a network'){
+						sshCommand remote: remote, command: "sudo docker network create mynet || true"
+					}
+					stage('Testing Machine - Deploy Docker Container'){
+						withCredentials([usernamePassword(credentialsId: 'db_cred', passwordVariable: 'db_passwd', usernameVariable: 'db_usrname')]) {
+							sshCommand remote: remote, command: "sudo docker run --net mynet --name db --env POSTGRES_USER=${db_usrname} --env POSTGRES_PASSWORD=${db_passwd} --env POSTGRES_DB=movies -d -v dbvolume:/var/lib/postgresql/data --restart=always postgres"
+							sshCommand remote: remote, command: "sudo docker run --net mynet --name adminer --restart=always -p 9090:8080 -d adminer"
+							sshCommand remote: remote, command: "sudo docker run --net mynet --name backend --env DB_USER=${db_usrname} --env DB_PASS=${db_passwd} --env DB=movies --env DB_HOST=db -d hiteshgrw/mreviewbackend:latest"
+							sshCommand remote: remote, command: "sudo docker run --net mynet --name frontend -d -p 80:5000 hiteshgrw/mreviewfrontend:latest"
+						}
+					}
+					stage('Testing Machine - Delete the testing containers'){
+						def usrInput_test_complete = input id: 'Test_complete', message: 'User Prompt!', parameters: [choice(choices: ['Yes'], description: 'Have You Completed Testing ?', name: 'test_completed')], submitterParameter: 'test_complete_provider'
+						def result_usrInput_test_complete = usrInput_test_complete['test_completed']
+						def provider_usrInput_test_complete = usrInput_test_complete['test_complete_provider']
+						echo "Testing Completion approved by ${provider_usrInput_test_complete}"
+						sshCommand remote: remote, command: "sudo docker kill frontend || true"
+						sshCommand remote: remote, command: "sudo docker rm frontend || true"
+						sshCommand remote: remote, command: "sudo docker kill backend || true"
+						sshCommand remote: remote, command: "sudo docker rm backend || true"
+						sshCommand remote: remote, command: "sudo docker kill db || true"
+						sshCommand remote: remote, command: "sudo docker rm db || true"
+						sshCommand remote: remote, command: "sudo docker kill adminer || true"
+						sshCommand remote: remote, command: "sudo docker rm adminer || true"
+					}
+				}
+			} else {
+				echo "No Testing !! Let's Proceed Further"
+			}
+		}
+	}
+	stage('Deploy the Docker Image'){
+		def usrInput_prod_choice = input id: 'Prod_choice', message: 'User Prompt!', parameters: [choice(choices: ['Yes', 'No'], description: 'Do you want to deploy the container ?', name: 'test_choice_proceed')], submitterParameter: 'test_choice_provider'
+		def result_usrInput_prod_choice = usrInput_prod_choice['test_choice_proceed']
+		def provider_usrInput_prod_choice = usrInput_prod_choice['test_choice_provider']
+		echo "Testing Choice is approved by ${provider_usrInput_prod_choice}"
+		script {
+			if (result_usrInput_prod_choice == 'Yes') {
+				def usrInput_prod_input = input id: 'Prod_input', message: 'User Prompt!', parameters: [string(description: 'What is IP of the Production Machine on which you want to deploy ?', name: 'test_machine_ip', trim: true)], submitterParameter: 'test_input_provider'
+				def result_usrInput_prod_input = usrInput_prod_input['test_machine_ip']
+				def provider_usrInput_prod_input = usrInput_prod_input['test_input_provider']
+				echo "Testing Machine IP is provided by ${provider_usrInput_prod_input}"
+				withCredentials([sshUserPrivateKey(credentialsId: 'ssh_key', keyFileVariable: 'ssh_key', passphraseVariable: '', usernameVariable: 'ssh_usrname')]) {
+					remote.name = "docker"
+					remote.host = result_usrInput_prod_input
+					remote.allowAnyHosts = true
+					remote.user = ssh_usrname
+					remote.identityFile = ssh_key
+					stage('Production Machine - Delete the running containers'){
+						sshCommand remote: remote, command: "sudo docker kill frontend || true"
+						sshCommand remote: remote, command: "sudo docker rm frontend || true"
+						sshCommand remote: remote, command: "sudo docker kill backend || true"
+						sshCommand remote: remote, command: "sudo docker rm backend || true"
+						sshCommand remote: remote, command: "sudo docker kill db || true"
+						sshCommand remote: remote, command: "sudo docker rm db || true"
+						sshCommand remote: remote, command: "sudo docker kill adminer || true"
+						sshCommand remote: remote, command: "sudo docker rm adminer || true"
+						sshCommand remote: remote, command: "sudo docker rmi hiteshgrw/mreviewfrontend:latest || true"
+						sshCommand remote: remote, command: "sudo docker rmi hiteshgrw/mreviewbackend:latest || true"
+					}
+					stage('Production Machine - Create a network'){
+						sshCommand remote: remote, command: "sudo docker network create mynet || true"
+					}
+					stage('Production Machine - Deploy Docker Container'){
+						withCredentials([usernamePassword(credentialsId: 'db_cred', passwordVariable: 'db_passwd', usernameVariable: 'db_usrname')]) {
+							sshCommand remote: remote, command: "sudo docker run --net mynet --name db --env POSTGRES_USER=${db_usrname} --env POSTGRES_PASSWORD=${db_passwd} --env POSTGRES_DB=movies -d -v dbvolume:/var/lib/postgresql/data --restart=always postgres"
+							sshCommand remote: remote, command: "sudo docker run --net mynet --name adminer --restart=always -p 9090:8080 -d adminer"
+							sshCommand remote: remote, command: "sudo docker run --net mynet --name backend --env DB_USER=${db_usrname} --env DB_PASS=${db_passwd} --env DB=movies --env DB_HOST=db -d hiteshgrw/mreviewbackend:latest"
+							sshCommand remote: remote, command: "sudo docker run --net mynet --name frontend -d -p 80:5000 hiteshgrw/mreviewfrontend:latest"
+						}
+					}
+					echo 'Application Deployed on to the Production Server'
+				}
+			} else {
+				echo "No Deployment !! Let's Proceed Further"
+			}
+		}
+	}
 }
